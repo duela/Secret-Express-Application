@@ -17,3 +17,19 @@ app.set('view engine', 'ejs');
 
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(express.static("public")); // use to store static files like images css
+
+app.get('/login', function(req, res) {
+  res.render('login');
+});
+app.get('/', function(req, res) {
+  res.render('home');
+});
+app.get('/secrets', function(req, res) {
+  res.render('secrets');
+});
+app.get('/register', function(req, res) {
+  res.render('register');
+});
+app.get('/submit', function(req, res) {
+  res.render('submit');
+});
