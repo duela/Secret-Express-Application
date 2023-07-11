@@ -2,6 +2,7 @@
 const express = require("express");
 // require mongoose
 const mongoose = require("mongoose");
+const ejs = require("ejs");
 const { Schema } = mongoose;
 const bodyParser = require("body-parser");
 const _ = require('lodash');
@@ -18,18 +19,78 @@ app.set('view engine', 'ejs');
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(express.static("public")); // use to store static files like images css
 
-app.get('/login', function(req, res) {
-  res.render('login');
+mongoose.connect('mongodb://127.0.0.1:27017/userDB'); // Start and connect to mongodb server
+
+// Create a user Schema
+const userSchema = new Schema({
+    email: String,
+    password: String
 });
+
+// Create user Model
+const User = mongoose.model("User", userSchema);
+
+
 app.get('/', function(req, res) {
   res.render('home');
 });
-app.get('/secrets', function(req, res) {
-  res.render('secrets');
-});
-app.get('/register', function(req, res) {
+// using express app.route(). chainable route to reduce redundacy and typos
+app.route('/register')
+.get(function(req, res) {
   res.render('register');
+})
+.post(function(req, res) {
+  User.findOne({email: req.body.username}).then(function(registerPost){
+    if (!registerPost) {
+      const newUser =  new User({
+        email: req.body.username,
+        password: req.body.password
+      });
+      newUser.save();
+      res.render('secrets');
+    }
+    else {
+      const errorMessage = "Oops! " +req.body.username + " already exist!"
+      res.render('error', {error: errorMessage});
+    }
+  }).catch(function(err) {
+    console.log(err);
+    res.redirect('/');
+  });
 });
-app.get('/submit', function(req, res) {
-  res.render('submit');
+
+app.route('/login')
+.get(function(req, res) {
+  res.render('login');
+})
+.post(function(req, res) {
+  User.findOne({email: req.body.username})
+  .then(function(loginPost){
+    if (!loginPost) {
+      console.log("No account");
+    }
+    else {
+      if (loginPost) {
+        if (loginPost.password === req.body.password) {
+          res.render("secrets")
+        }
+        else {
+          res.render('error', {error: "Invalid password, try again!"});
+        }
+      }
+    }
+  }).catch(function(err) {
+    console.log(err);
+  });
 });
+
+
+
+
+
+// app.get('/secrets', function(req, res) {
+//   res.render('secrets');
+// });
+// app.get('/submit', function(req, res) {
+//   res.render('submit');
+// });
