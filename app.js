@@ -1,4 +1,5 @@
 //jshint esversion:6
+require('dotenv').config() // use environment variables to keep secret safe. It is important to use right at the top
 const express = require("express");
 // require mongoose
 const mongoose = require("mongoose");
@@ -9,8 +10,7 @@ const _ = require('lodash');
 const port = 3000;
 const app = express();
 const uri = require(__dirname + "/uri.js");
-var encrypt = require('mongoose-encryption');
-
+const encrypt = require('mongoose-encryption');
 //Listening on port 3000 and if it goes well then logging a message saying that the server is running
 app.listen(process.env.PORT || port, function(req, res){
   console.log('Server is connected to port ' + port + ' ...');
@@ -21,7 +21,8 @@ app.set('view engine', 'ejs');
 app.use(bodyParser.urlencoded({extended: true}));
 app.use(express.static("public")); // use to store static files like images css
 
-mongoose.connect('mongodb://127.0.0.1:27017/userDB'); // Start and connect to mongodb server
+const mongoDbServer = process.env.MONGODB
+mongoose.connect(mongoDbServer); // Start and connect to mongodb server
 
 // Level 2 security
 
@@ -31,7 +32,8 @@ const userSchema = new mongoose.Schema({
     password: String
 });
 // It is important that you add this plugin to the schema before you create the Mongoose model because the userSchema is passed as a parameter to create the new Mongoose model
-const secret = uri.secret(); // or a unique key can be use as a form of string
+//const secret = uri.secret(); // or a unique key can be use as a form of string
+const secret = process.env.SECRET // Alternatively using dot env to store secret safe
 //userSchema.plugin(encrypt, { secret: secret, excludeFromEncryption: ['email'] }); // This encrypt the entire database and exclude "email"
 //userSchema.plugin(encrypt, { secret: secret, encryptedFields: ['password', 'socialNumber', 'creditCard'] }); // This encrypt only the "['password', 'socialNumber', 'creditCard']" in the entire database
 userSchema.plugin(encrypt, { secret: secret, encryptedFields: ['password'] }); // This encrypt only the "password" in the entire database
