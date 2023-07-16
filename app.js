@@ -15,6 +15,8 @@ const session = require('express-session');
 const passport = require('passport');
 const localStrategy = require('passport-local');
 const passportLocalMongoose = require('passport-local-mongoose');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate');
 
 // passport-local-mongoose does the salting and hashing
 // const bcrypt = require('bcrypt');
@@ -43,19 +45,20 @@ app.use(
 app.use(passport.initialize()); // initialize passport
 app.use(passport.session());   // use a passport to manage our sessions
 
-// const mongoDbServer = process.env.MONGODB
-// mongoose.connect(mongoDbServer); // Start and connect to mongodb server
-// DB connection
-mongoose.connect("mongodb://127.0.0.1:27017/userDB", { useNewUrlParser: true });
+const mongoDbServer = process.env.MONGODB
+mongoose.connect(mongoDbServer); // Start and connect to mongodb server
+
 
 // Level 5 Using Passport.js to Add Cookies and Sessions
 // Create a user Schema with mongo encryption package
 const userSchema = new mongoose.Schema({
     email: String,
-    password: String
+    password: String,
+    googleId: String   // store google unique user ID
 });
 // userSchema to use passport local mongoose as a plugin
 userSchema.plugin(passportLocalMongoose);
+userSchema.plugin(findOrCreate);
 
 // Create user Model
 const User = mongoose.model("User", userSchema);
@@ -64,13 +67,57 @@ const User = mongoose.model("User", userSchema);
 // Use passport local mongoose to create a local login strategy and set a passport to  serialize deserialize our user
 passport.use(User.createStrategy());
 //passport.use(new localStrategy(User.authenticate()));
-passport.serializeUser(User.serializeUser());   //
-passport.deserializeUser(User.deserializeUser());  // checks cookies content
+passport.serializeUser(function(user, cb) {
+  process.nextTick(function() {
+    cb(null, { id: user.id, username: user.username });
+  });
+});
+
+passport.deserializeUser(function(user, cb) {
+  process.nextTick(function() {
+    return cb(null, user);
+  });
+});
+
+// ////////// Google Authentication //////////////////
+
+passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",   // Authorised redirect URLS to secret page
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"  // Retreive from user info and not google plus account
+  },
+  // Google sends back a "accesstoken", which allows to get data related to that user and
+  //"refreshToken" allow access to dta fpr a longer period of time. while
+  //"profile" contains users email, google ID and anything we have access to created from google dev console
+  function(accessToken, refreshToken, profile, cb) {
+    // npm i mongoose-findorcreate before usong the pseudo method
+    console.log(profile);   // to log user profile
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {  // find or create googleID if it doesn't exist
+      return cb(err, user);
+
+    });
+  }
+));
 
 ///////////////////////// GET REQUESTS  //////////////////////////////
 app.get('/', function(req, res) {
   res.render('home');
 });
+
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile'] }),
+  function(req, res) {
+    // Successful authentication, redirect secrets page.
+    res.redirect('/secrets');
+});
+
+app.get('/auth/google/secrets',   // The callback string as to match what was specified in Google console Authorised redirect URIs
+  passport.authenticate('google', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
 
 app.get('/register', function(req, res) {
   res.render('register');
