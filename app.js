@@ -16,6 +16,7 @@ const passport = require('passport');
 const localStrategy = require('passport-local');
 const passportLocalMongoose = require('passport-local-mongoose');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const TwitterStrategy = require("passport-twitter").Strategy;
 const findOrCreate = require('mongoose-findorcreate');
 
 // passport-local-mongoose does the salting and hashing
@@ -54,7 +55,11 @@ mongoose.connect(mongoDbServer); // Start and connect to mongodb server
 const userSchema = new mongoose.Schema({
     email: String,
     password: String,
-    googleId: String   // store google unique user ID
+    username: String,
+    twitterId: String,
+    googleId: String,   // store google unique user ID
+    provider: String,    // Provider e.g google, facebook, twitter etc
+    name: String
 });
 // userSchema to use passport local mongoose as a plugin
 userSchema.plugin(passportLocalMongoose);
@@ -79,34 +84,63 @@ passport.deserializeUser(function(user, cb) {
   });
 });
 
-// ////////// Google Authentication //////////////////
+//////////// Configure Google Authentication //////////////////
 
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: "http://localhost:3000/auth/google/secrets",   // Authorised redirect URLS to secret page
-    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"  // Retreive from user info and not google plus account
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",  // Retreive from user info and not google plus account
+    passReqToCallback: true
   },
   // Google sends back a "accesstoken", which allows to get data related to that user and
   //"refreshToken" allow access to dta fpr a longer period of time. while
   //"profile" contains users email, google ID and anything we have access to created from google dev console
-  function(accessToken, refreshToken, profile, cb) {
+  function(request, accessToken, refreshToken, profile, cb) {
     // npm i mongoose-findorcreate before usong the pseudo method
-    console.log(profile);   // to log user profile
-    User.findOrCreate({ googleId: profile.id }, function (err, user) {  // find or create googleID if it doesn't exist
-      return cb(err, user);
+     console.log(profile.provider);   // to log user profile
+    // console.log(profile._json.email);
+    User.findOrCreate({ googleId: profile.id },
+      {email: profile._json.email,
+        name: profile._json.given_name,
+        provider: profile.provider
+      },
+      function (err, user) {  // find or create googleID if it doesn't exist
+         return cb(err, user);
+        });
+  }
+ )
+);
 
+//////////// Configure Twitter Authentication //////////////////
+
+passport.use(new TwitterStrategy({
+    consumerKey: process.env.TWITTER_CONSUMER_KEY,
+    consumerSecret: process.env.TWITTER_CONSUMER_SECRET,
+    callbackURL: "http://www.localhost:3000/auth/twitter/secrets"
+  },
+  function(token, tokenSecret, profile, cb) {
+    //console.log(profile);
+    User.findOrCreate({ twitterId: profile.id },
+      {name: profile._json.given_name,
+        username: profile.username,
+        provider: profile.provider
+      },
+        function (err, user) {
+      return cb(err, user);
     });
   }
-));
+ )
+);
 
 ///////////////////////// GET REQUESTS  //////////////////////////////
 app.get('/', function(req, res) {
   res.render('home');
 });
 
+//////////// Authenticate  Google Requests //////////////////
 app.get('/auth/google',
-  passport.authenticate('google', { scope: ['profile'] }),
+  passport.authenticate('google', { scope: ['profile', 'email', 'openid'] }),
   function(req, res) {
     // Successful authentication, redirect secrets page.
     res.redirect('/secrets');
@@ -118,6 +152,23 @@ app.get('/auth/google/secrets',   // The callback string as to match what was sp
     // Successful authentication, redirect home.
     res.redirect('/secrets');
   });
+
+//////////// Authenticate  Google Requests //////////////////
+
+app.get('/auth/twitter',
+  passport.authenticate('twitter'),
+  function(req, res) {
+    // Successful authentication, redirect secrets page.
+    res.redirect('/secrets');
+});
+
+app.get('/auth/twitter/secrets',
+  passport.authenticate('twitter', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
+
 
 app.get('/register', function(req, res) {
   res.render('register');
@@ -153,7 +204,7 @@ app.get('/logout', function(req,res , next){
 ///////////////////////// POST REQUESTS  //////////////////////////////
 app.post('/register', function(req, res) {
  User.register(
-   {username: req.body.username }, req.body.password,
+   {username: req.body.username , email: req.body.username}, req.body.password,
    function(err, user){
    if (err) {
      const errorMessage = "Oops! " + req.body.username + " email already exist"
@@ -171,7 +222,7 @@ app.post('/register', function(req, res) {
 
 app.post('/login', function(req, res) {
   const user = new User({
-    username: req.body.username,
+    email: req.body.username,
     password: req.body.password
   });
   req.login(user, function(err){
