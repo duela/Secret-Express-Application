@@ -54,7 +54,9 @@ mongoose.connect(mongoDbServer); // Start and connect to mongodb server
 const userSchema = new mongoose.Schema({
     email: String,
     password: String,
-    googleId: String   // store google unique user ID
+    googleId: String,   // store google unique user ID
+    provider: String,    // Provider e.g google, facebook, twitter etc
+    name: String
 });
 // userSchema to use passport local mongoose as a plugin
 userSchema.plugin(passportLocalMongoose);
@@ -85,20 +87,22 @@ passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: "http://localhost:3000/auth/google/secrets",   // Authorised redirect URLS to secret page
-    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo"  // Retreive from user info and not google plus account
+    userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",  // Retreive from user info and not google plus account
+    passReqToCallback: true
   },
   // Google sends back a "accesstoken", which allows to get data related to that user and
   //"refreshToken" allow access to dta fpr a longer period of time. while
   //"profile" contains users email, google ID and anything we have access to created from google dev console
-  function(accessToken, refreshToken, profile, cb) {
+  function(request, accessToken, refreshToken, profile, cb) {
     // npm i mongoose-findorcreate before usong the pseudo method
-    console.log(profile);   // to log user profile
-    User.findOrCreate({ googleId: profile.id }, function (err, user) {  // find or create googleID if it doesn't exist
-      return cb(err, user);
-
-    });
+     console.log(profile.provider);   // to log user profile
+    // console.log(profile._json.email);
+    User.findOrCreate({ googleId: profile.id },{email: profile._json.email, name: profile._json.given_name, provider: profile.provider}, function (err, user) {  // find or create googleID if it doesn't exist
+         return cb(err, user);
+        });
   }
-));
+ )
+);
 
 ///////////////////////// GET REQUESTS  //////////////////////////////
 app.get('/', function(req, res) {
@@ -106,7 +110,7 @@ app.get('/', function(req, res) {
 });
 
 app.get('/auth/google',
-  passport.authenticate('google', { scope: ['profile'] }),
+  passport.authenticate('google', { scope: ['profile', 'email', 'openid'] }),
   function(req, res) {
     // Successful authentication, redirect secrets page.
     res.redirect('/secrets');
@@ -153,7 +157,7 @@ app.get('/logout', function(req,res , next){
 ///////////////////////// POST REQUESTS  //////////////////////////////
 app.post('/register', function(req, res) {
  User.register(
-   {username: req.body.username }, req.body.password,
+   {username: req.body.username , email: req.body.username}, req.body.password,
    function(err, user){
    if (err) {
      const errorMessage = "Oops! " + req.body.username + " email already exist"
@@ -171,7 +175,7 @@ app.post('/register', function(req, res) {
 
 app.post('/login', function(req, res) {
   const user = new User({
-    username: req.body.username,
+    email: req.body.username,
     password: req.body.password
   });
   req.login(user, function(err){
