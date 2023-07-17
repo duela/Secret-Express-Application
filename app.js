@@ -16,6 +16,7 @@ const passport = require('passport');
 const localStrategy = require('passport-local');
 const passportLocalMongoose = require('passport-local-mongoose');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const TwitterStrategy = require("passport-twitter").Strategy;
 const findOrCreate = require('mongoose-findorcreate');
 
 // passport-local-mongoose does the salting and hashing
@@ -54,6 +55,8 @@ mongoose.connect(mongoDbServer); // Start and connect to mongodb server
 const userSchema = new mongoose.Schema({
     email: String,
     password: String,
+    username: String,
+    twitterId: String,
     googleId: String,   // store google unique user ID
     provider: String,    // Provider e.g google, facebook, twitter etc
     name: String
@@ -81,7 +84,7 @@ passport.deserializeUser(function(user, cb) {
   });
 });
 
-// ////////// Google Authentication //////////////////
+//////////// Configure Google Authentication //////////////////
 
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
@@ -97,9 +100,35 @@ passport.use(new GoogleStrategy({
     // npm i mongoose-findorcreate before usong the pseudo method
      console.log(profile.provider);   // to log user profile
     // console.log(profile._json.email);
-    User.findOrCreate({ googleId: profile.id },{email: profile._json.email, name: profile._json.given_name, provider: profile.provider}, function (err, user) {  // find or create googleID if it doesn't exist
+    User.findOrCreate({ googleId: profile.id },
+      {email: profile._json.email,
+        name: profile._json.given_name,
+        provider: profile.provider
+      },
+      function (err, user) {  // find or create googleID if it doesn't exist
          return cb(err, user);
         });
+  }
+ )
+);
+
+//////////// Configure Twitter Authentication //////////////////
+
+passport.use(new TwitterStrategy({
+    consumerKey: process.env.TWITTER_CONSUMER_KEY,
+    consumerSecret: process.env.TWITTER_CONSUMER_SECRET,
+    callbackURL: "http://www.localhost:3000/auth/twitter/secrets"
+  },
+  function(token, tokenSecret, profile, cb) {
+    //console.log(profile);
+    User.findOrCreate({ twitterId: profile.id },
+      {name: profile._json.given_name,
+        username: profile.username,
+        provider: profile.provider
+      },
+        function (err, user) {
+      return cb(err, user);
+    });
   }
  )
 );
@@ -109,6 +138,7 @@ app.get('/', function(req, res) {
   res.render('home');
 });
 
+//////////// Authenticate  Google Requests //////////////////
 app.get('/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email', 'openid'] }),
   function(req, res) {
@@ -122,6 +152,23 @@ app.get('/auth/google/secrets',   // The callback string as to match what was sp
     // Successful authentication, redirect home.
     res.redirect('/secrets');
   });
+
+//////////// Authenticate  Google Requests //////////////////
+
+app.get('/auth/twitter',
+  passport.authenticate('twitter'),
+  function(req, res) {
+    // Successful authentication, redirect secrets page.
+    res.redirect('/secrets');
+});
+
+app.get('/auth/twitter/secrets',
+  passport.authenticate('twitter', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
+
 
 app.get('/register', function(req, res) {
   res.render('register');
