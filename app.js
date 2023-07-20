@@ -194,13 +194,7 @@ app.get("/secrets", function (req, res) {
     const userId = req.user.id;
     User.findById(userId).then(function(foundUser){
       console.log(foundUser);
-      User.find({"secret": {$ne: null}}).then(function(foundSecrets){  // This will return all documents with both a key called "secret" and a non-null value (i.e the "secret" field is not equal to null).
-          console.log(foundSecrets);
-          res.render('secrets', {usersWithSecrets: foundSecrets} )
-      }).catch(function(err){
-        res.redirect("/submit");
-        console.log(err);
-      });
+      res.render('secrets', {usersWithSecrets: foundUser} )
     }).catch(function(err){
       res.redirect("/submit");
       console.log(err);
