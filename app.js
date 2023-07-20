@@ -26,6 +26,9 @@ const findOrCreate = require('mongoose-findorcreate');
 app.listen(process.env.PORT || port, function(req, res){
   console.log('Server is connected to port ' + port + ' ...');
 });
+  //////// function(req, res) ///////
+// console.log(req);     // examine calls from the client side, make HHTP requests and handle incoming data where in string or JSON object
+// console.log(res);     // represent the HTTP response that an Express app sends when it gets an HTTP request
 
 app.use(express.static("public")); // use to store static files like images css
 app.set('view engine', 'ejs');
@@ -39,7 +42,7 @@ app.use(
     secret: "Our little secret.",
     resave: false,
     saveUninitialized: false,
-    cookie: { maxAge: 30000} // assign time for cookie to expire in 1min, remove to mot include timeout
+    cookie: { maxAge: null} // assign time for cookie to expire in 1min, remove to mot include timeout
   })
 );
 //app.use(passport.authenticate('session'));
@@ -59,7 +62,8 @@ const userSchema = new mongoose.Schema({
     twitterId: String,
     googleId: String,   // store google unique user ID
     provider: String,    // Provider e.g google, facebook, twitter etc
-    name: String
+    name: String,
+    secret: String   // user secret message
 });
 // userSchema to use passport local mongoose as a plugin
 userSchema.plugin(passportLocalMongoose);
@@ -167,8 +171,7 @@ app.get('/auth/twitter/secrets',
   function(req, res) {
     // Successful authentication, redirect home.
     res.redirect('/secrets');
-  });
-
+});
 
 app.get('/register', function(req, res) {
   res.render('register');
@@ -183,17 +186,45 @@ app.get('/error', function(req, res) {
 });
 
 app.get("/secrets", function (req, res) {
-  console.log(req.isAuthenticated());
-  console.log(req.session.cookie.maxAge); // to check session time left
+  //console.log(req.isAuthenticated());
+  //console.log(req.session.cookie.maxAge); // to check session time left
+  // Confirm if a user is authenticated before rendering the secrret page
+  //console.log(req);
   if (req.isAuthenticated()) {
-    res.render("secrets");
+    const userId = req.user.id;
+    User.findById(userId).then(function(foundUser){
+      console.log(foundUser);
+      User.find({"secret": {$ne: null}}).then(function(foundSecrets){  // This will return all documents with both a key called "secret" and a non-null value (i.e the "secret" field is not equal to null).
+          console.log(foundSecrets);
+          res.render('secrets', {usersWithSecrets: foundSecrets} )
+      }).catch(function(err){
+        res.redirect("/submit");
+        console.log(err);
+      });
+    }).catch(function(err){
+      res.redirect("/submit");
+      console.log(err);
+    });
+
+
+  }
+  else {
+    res.redirect("/login");
+  }
+
+
+});
+
+app.get('/submit', function(req, res){
+  if (req.isAuthenticated()) {
+    res.render("submit");
   } else {
     res.redirect("/login");
   }
 });
 
 // check www.passportjs.org/tutorials/password/logout for the documentation
-app.get('/logout', function(req,res , next){
+app.get('/logout', function(req, res , next){
   req.logout(function(err){
     if (err) {
       return next(err);
@@ -203,26 +234,38 @@ app.get('/logout', function(req,res , next){
 });
 ///////////////////////// POST REQUESTS  //////////////////////////////
 app.post('/register', function(req, res) {
- User.register(
-   {username: req.body.username , email: req.body.username}, req.body.password,
-   function(err, user){
-   if (err) {
-     const errorMessage = "Oops! " + req.body.username + " email already exist"
-     console.log(errorMessage);
-     res.render('error', {error: errorMessage});
+  User.findOne({email: req.body.username}).then(function(foundRegister){  // check db if an email already exist
+    if(!foundRegister){
+      User.register(
+        {username: req.body.username , email: req.body.username}, req.body.password,
+        function(err, user){
+        if (err) {
+          const errorMessage = "Oops! " + req.body.username + " email already exist"
+          console.log(errorMessage);
+          res.render('error', {error: errorMessage});
+        }
+        else {
+          passport.authenticate('local')(req, res, function(){  // Authenticate password using their password and username
+            res.redirect('/secrets');
+          });
+       }
+      }
+     )
+    }
+  else {
+    const errorMessage = "Oops! " + req.body.username + " email already exist"
+    console.log(errorMessage);
+    res.render('error', {error: errorMessage});
    }
-   else {
-     passport.authenticate('local')(req, res, function(){  // Authenticate password using their password and username
-       res.redirect('/secrets');
-     });
-  }
- }
-)
+  }).catch(function(err){
+    console.log(err);
+  });
+
 });
 
 app.post('/login', function(req, res) {
   const user = new User({
-    email: req.body.username,
+    username: req.body.username,
     password: req.body.password
   });
   req.login(user, function(err){
@@ -240,6 +283,37 @@ app.post('/login', function(req, res) {
  });
 });
 
+app.post('/submit', function(req, res){
+  const secretMessage = req.body.secret;
+  const userId = req.user.id;
+  //console.log(secretMessage);
+  //console.log(userId);
+  User.findById(userId).then(function(foundUser){
+    if (!foundUser) {
+      console.log("err");
+    }
+    else {
+      if (foundUser) {
+        foundUser.secret = secretMessage;
+        foundUser.save().then(function(){
+          res.redirect('/secrets');
+        }).catch(function(err){
+          console.log(err);
+        });
+          // console.log(foundUser);
+      }
+      else {
+        res.redirect('/submit');
+      }
+
+    }
+  }).catch(function(err){
+    console.log(err);
+    res.redirect('/login');
+  });
+
+  res.render('submit', {secretMessageSent: secretMessage});
+});
 
 
 
